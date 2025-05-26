@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"helm.sh/helm/v3/pkg/registry"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -31,27 +32,26 @@ import (
 // The file is meant to be used for a single reconciliation and deleted after.
 func ClientGenerator(tlsConfig *tls.Config, isLogin, insecureHTTP bool) (*registry.Client, string, error) {
 	if isLogin {
-		// create a temporary file to store the credentials
+		// create a temporary directory to store the credentials
 		// this is needed because otherwise the credentials are stored in ~/.docker/config.json.
-		credentialsFile, err := os.CreateTemp("", "credentials")
+		credentialsDir, err := os.MkdirTemp("", "credentials")
 		if err != nil {
 			return nil, "", err
 		}
+		credentialsFile := filepath.Join(credentialsDir, "config.json")
 
 		var errs []error
-		rClient, err := newClient(credentialsFile.Name(), tlsConfig, insecureHTTP)
+		rClient, err := newClient(credentialsFile, tlsConfig, insecureHTTP)
 		if err != nil {
 			errs = append(errs, err)
 			// attempt to delete the temporary file
-			if credentialsFile != nil {
-				err := os.Remove(credentialsFile.Name())
-				if err != nil {
-					errs = append(errs, err)
-				}
+			err := os.Remove(credentialsFile)
+			if err != nil {
+				errs = append(errs, err)
 			}
 			return nil, "", errors.NewAggregate(errs)
 		}
-		return rClient, credentialsFile.Name(), nil
+		return rClient, credentialsFile, nil
 	}
 
 	rClient, err := newClient("", tlsConfig, insecureHTTP)
